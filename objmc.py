@@ -80,6 +80,9 @@ visibility = 7
 # makes it not optifine compatible
 nopow = True
 
+# Per-vertex normals
+normals = False
+
 # Joining multiple models
 join = []
 
@@ -136,11 +139,18 @@ parser.add_argument(
     help="Attempt to estimate rotation with Normals, 0: off, 1: yaw, 2: pitch, 3: both",
     default=autorotate,
 )
+# TODO
 parser.add_argument(
     "--compression",
-    type=Optional[bool],
-    help="Compression mode: true/false",
-    default=autorotate,
+    action="store_true",
+    dest="compression",
+    help="Enable compression"
+)
+parser.add_argument(
+    "--nocompression",
+    action="store_false",
+    dest="compression",
+    help="Disable compression"
 )
 parser.add_argument(
     "--autoplay",
@@ -172,6 +182,12 @@ parser.add_argument(
 parser.add_argument(
     "--join", nargs="*", dest="join", help="Joins multiple json models into one"
 )
+parser.add_argument(
+    "--normals",
+    action="store_true",
+    dest="normals",
+    help="Export per-vertex normals: true/false",
+)
 
 
 def getargs(args):
@@ -192,6 +208,7 @@ def getargs(args):
     global nopow
     global join
     global compression
+    global normals
 
     objs = args.objs
     texs = args.texs
@@ -210,6 +227,7 @@ def getargs(args):
     nopow = args.nopow
     join = args.join
     compression = args.compression
+    normals = args.normals
 
 getargs(parser.parse_args())
 
@@ -236,14 +254,14 @@ def exit():
 
 
 # --------------------------------
-count = [0, 0]
-mem = {"positions": {}, "uvs": {}}
-data = {"positions": [], "uvs": [], "vertices": []}
+count = [0, 0, 0]
+mem = {"positions": {}, "uvs": {}, "normals": {}}
+data = {"positions": [], "uvs": [], "normals": [], "vertices": []}
 
 
 def readobj(name, nfaces):
     obj = open(name, "r", encoding="utf-8")
-    d = {"positions": [], "uvs": [], "faces": []}
+    d = {"positions": [], "uvs": [], "normals": [], "faces": []}
     for line in obj:
         if line.startswith("v "):
             d["positions"].append(
@@ -251,6 +269,10 @@ def readobj(name, nfaces):
             )
         if line.startswith("vt "):
             d["uvs"].append(
+                tuple([float(i) for i in " ".join(line.split()).split(" ")[1:]])
+            )
+        if line.startswith("vn "):
+            d["normals"].append(
                 tuple([float(i) for i in " ".join(line.split()).split(" ")[1:]])
             )
         if line.startswith("f "):
@@ -277,8 +299,12 @@ def indexvert(o, vert):
     v = []
     pos = o["positions"][vert[0]]
     uv = o["uvs"][vert[1]]
+    norm = []
+    if len(vert) > 2:
+        norm = o["normals"][vert[2]]
     posh = ",".join([str(i) for i in pos])
     uvh = ",".join([str(i) for i in uv])
+    normh = ",".join([str(i) for i in norm])
     try:
         v.append(mem["positions"][posh])
     except:
@@ -293,6 +319,16 @@ def indexvert(o, vert):
         data["uvs"].append(uv)
         v.append(count[1])
         count[1] += 1
+    if norm:
+        try:
+            v.append(mem["normals"][normh])
+        except:
+            mem["normals"][normh] = count[2]
+            data["normals"].append(norm)
+            v.append(count[2])
+            count[2] += 1
+    else:
+        v.append(0)
     data["vertices"].append(v)
 
 
@@ -379,9 +415,19 @@ def getuv(i):
     return rgb
 
 
+def getnormal(i):
+    x = (data["normals"][i][0]) * 255
+    y = (data["normals"][i][1]) * 255
+    z = (data["normals"][i][2]) * 255
+    rgb = []
+    rgb.append((int(abs(x)), int(abs(y)), int(abs(z)), 248 | (int(x < 0) << 0) | (int(y < 0) << 1) | (int(z < 0) << 2)))
+    return rgb
+
+
 def getvert(i, compression_enabled):
     poi = data["vertices"][i][0]
     uvi = data["vertices"][i][1]
+    noi = data["vertices"][i][2]
     rgb = []
 
     if compression_enabled:
@@ -402,6 +448,9 @@ def getvert(i, compression_enabled):
         rgb.append(
             (int((uvi / 65536) % 256), int((uvi / 256) % 256), int(uvi % 256), 255)
         )
+        rgb.append(
+            (int((noi / 65536) % 256), int((noi / 256) % 256), int(noi % 256), 255)
+        )
 
     return rgb
 
@@ -420,6 +469,7 @@ def strcontext(
     autoplay,
     flipuv,
     noshadow,
+    normals,
     nopow,
     compression,
 ):
@@ -442,6 +492,8 @@ def strcontext(
         s += " --noshadow"
     if nopow:
         s += " --nopow"
+    if normals:
+        s += " --normals"
     return s
 
 
@@ -476,6 +528,7 @@ def objmc(
     autoplay,
     flipuv,
     noshadow,
+    normals, # TODO
     nopow,
     compression,
 ):
@@ -486,9 +539,9 @@ def objmc(
     global count
     global mem
     global data
-    count = [0, 0]
-    mem = {"positions": {}, "uvs": {}}
-    data = {"positions": [], "uvs": [], "vertices": []}
+    count = [0, 0, 0]
+    mem = {"positions": {}, "uvs": {}, "normals": {}}
+    data = {"positions": [], "uvs": [], "normals": [], "vertices": []}
 
     # file extension optional
     if output[0][-5:] != ".json":
@@ -538,14 +591,15 @@ def objmc(
     uvheight = math.ceil(nfaces / x)
     vpheight = math.ceil(len(data["positions"]) * 3 / x)
     vtheight = math.ceil(len(data["uvs"]) * 2 / x)
+    vnheight = math.ceil(len(data["normals"]) * 1 / x)
 
     compression_enabled = (
         len(data["uvs"]) <= 255 if compression == None else compression
-    )
+    ) and not normals
 
-    vheight = math.ceil(len(data["vertices"]) * (1 if compression_enabled else 2) / x)
+    vheight = math.ceil(len(data["vertices"]) * (1 if compression_enabled else 3) / x)
     # make height power of 2
-    ty = 1 + uvheight + texheight + vpheight + vtheight + vheight
+    ty = 1 + uvheight + texheight + vpheight + vtheight + vnheight + vheight
     if not nopow:
         ty = 1 << (ty - 1).bit_length()
     if (ty > 4096 and x < 4096) or (ty > 8 * x):
@@ -594,6 +648,8 @@ def objmc(
         vpheight,
         ", vth: ",
         vtheight,
+        ", vnh: ",
+        vnheight,
         ", vh: ",
         vheight,
         ", total: ",
@@ -610,7 +666,7 @@ def objmc(
         autorotate,
         sep="",
     )
-    print("offset: ", offset, ", scale: ", scale, ", noshadow: ", noshadow, sep="")
+    print("offset: ", offset, ", scale: ", scale, ", noshadow: ", noshadow, ", normals: ", normals, sep="")
     print(
         "visible:",
         " world" if visibility & 4 > 0 else "",
@@ -680,6 +736,16 @@ def objmc(
             + (visibility << 2)
             + int(cb / 256),
             cb % 256,
+            255
+        ),
+    )
+    # 7: normals height data
+    out.putpixel(
+        (7, 0),
+        (
+            int(vnheight / 256) % 256,
+            int(vnheight) % 256,
+            int(normals),
             255,
         ),
     )
@@ -728,16 +794,25 @@ def objmc(
         for j in range(0, 2):
             p = i * 2 + j
             out.putpixel((p % x, y + math.floor(p / x)), a[j])
-    print("Writing vertex data...\033[K", end="\r")
+
+    print("Writing normal data...\033[K", end="\r")
     y = 1 + uvheight + texheight + vpheight + vtheight
+    for i in range(0, len(data["normals"])):
+        a = getnormal(i)
+        for j in range(0, 1):
+            p = i * 1 + j
+            out.putpixel((p % x, y + math.floor(p / x)), a[j])
+
+    print("Writing vertex data...\033[K", end="\r")
+    y = 1 + uvheight + texheight + vpheight + vtheight + vnheight
     for i in range(0, len(data["vertices"])):
         a = getvert(i, compression_enabled)
 
         if compression_enabled:
             out.putpixel((i % x, y + math.floor(i / x)), a[0])
         else:
-            for j in range(0, 2):
-                p = i * 2 + j
+            for j in range(0, 3):
+                p = i * 3 + j
                 out.putpixel((p % x, y + math.floor(p / x)), a[j])
 
     print("Saving files...\033[K", end="\r")
@@ -890,6 +965,11 @@ if not len(sys.argv) > 1:
     tk.Label(basic, text="Auto Rotate:").grid(
         column=0, row=3, columnspan=2, sticky="E", padx=(10)
     )
+    # normals
+    pn = tk.BooleanVar()
+    tk.Checkbutton(basic, text="Export normals", variable=pn).grid(
+        column=0, row=4, columnspan=4, padx=(20, 0)
+    )
     ttk.Combobox(basic, values=rarr, textvariable=ar, state="readonly", width=7).grid(
         column=2, row=3, columnspan=2, sticky="W"
     )
@@ -1005,6 +1085,7 @@ if not len(sys.argv) > 1:
         ns.set(noshadow)
         for i in range(3):
             cb[i].set(colorbehavior[i])
+        pn.set(normals)
         ea.set(earr[easing])
         it.set(earr[interpolation])
         ar.set(rarr[autorotate])
@@ -1091,6 +1172,7 @@ if not len(sys.argv) > 1:
         noshadow = ns.get()
         autorotate = rarr.index(ar.get())
         autoplay = ap.get()
+        normals = pn.get()
         colorbehavior = [cb[0].get(), cb[1].get(), cb[2].get()]
         output = [outjson.get(), outpng.get()]
         objmc(
@@ -1107,6 +1189,7 @@ if not len(sys.argv) > 1:
             autoplay,
             flipuv,
             noshadow,
+            normals,
             nopow,
             (
                 None
@@ -1128,6 +1211,7 @@ if not len(sys.argv) > 1:
             autoplay,
             flipuv,
             noshadow,
+            normals,
             nopow,
             (
                 None
@@ -1165,6 +1249,7 @@ if not len(sys.argv) > 1:
                 autoplay,
                 flipuv,
                 noshadow,
+                normals,
                 nopow,
             )
         runtex = ""
@@ -1243,6 +1328,7 @@ else:
         autoplay,
         flipuv,
         noshadow,
+        normals,
         nopow,
         compression,
     )

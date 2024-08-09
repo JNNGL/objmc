@@ -17,6 +17,7 @@ in vec2 texCoord;
 in vec2 texCoord2;
 in vec3 Pos;
 in float transition;
+in vec3 objmcNormal;
 
 flat in int isCustom;
 flat in int noshadow;

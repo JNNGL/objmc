@@ -25,6 +25,7 @@ out vec2 texCoord;
 out vec2 texCoord2;
 out vec3 Pos;
 out float transition;
+out vec3 objmcNormal;
 
 flat out int isCustom;
 flat out int noshadow;
@@ -37,6 +38,7 @@ void main() {
     texCoord = UV0;
     vertexColor = Color;
     lightColor = minecraft_sample_lightmap(Sampler2, UV2);
+    objmcNormal = vec3(0.0);
 
     //objmc
     #define BLOCK

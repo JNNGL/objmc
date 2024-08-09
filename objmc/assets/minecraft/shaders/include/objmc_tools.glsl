@@ -26,21 +26,31 @@ vec2 getuv(ivec2 topleft, int w, int h, int index) {
         ((y.g*65280)+(y.b*255))/65535
     );
 }
-ivec2 getvert(ivec2 topleft, int w, int h, int index, bool compressionEnabled) {
+vec3 getnormal(ivec2 topleft, int w, int h, int index) {
+    int i = index*1;
+    vec4 xyza = texelFetch(Sampler0, topleft + ivec2(i%w,h+i/w), 0);
+    int alpha = int(round(xyza.w * 255.0));
+    vec3 sgn = vec3((alpha&1)>0 ? -1:1, (alpha&2)>0 ? -1:1, (alpha&4)>0 ? -1:1);
+    return normalize(sgn * xyza.xyz);
+}
+ivec3 getvert(ivec2 topleft, int w, int h, int index, bool compressionEnabled) {
 
     if(!compressionEnabled) {
-        int i = index*2;
+        int i = index*3;
         ivec4 a = ivec4(texelFetch(Sampler0, topleft + ivec2((i  )%w,h+((i  )/w)), 0)*255);
         ivec4 b = ivec4(texelFetch(Sampler0, topleft + ivec2((i+1)%w,h+((i+1)/w)), 0)*255);
-        return ivec2(
+        ivec4 c = ivec4(texelFetch(Sampler0, topleft + ivec2((i+2)%w,h+((i+2)/w)), 0)*255);
+        return ivec3(
             ((a.r*65536)+(a.g*256)+a.b),
-            ((b.r*65536)+(b.g*256)+b.b)
+            ((b.r*65536)+(b.g*256)+b.b),
+            ((c.r*65536)+(c.g*256)+c.b)
         );
     } else {
         ivec4 a = ivec4(texelFetch(Sampler0, topleft + ivec2((index  )%w,h+((index  )/w)), 0)*255);
-        return ivec2(
+        return ivec3(
             ((a.r*65536)+(a.g*256)+a.b),
-            a.a - 1
+            a.a - 1,
+            0
         );
     }
 }

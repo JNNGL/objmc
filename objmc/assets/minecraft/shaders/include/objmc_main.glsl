@@ -13,7 +13,7 @@ float scale = 1;
 vec3 rotation = vec3(0);
 int headerheight = 0;
 bool compression = false;
-ivec4 t[8];
+ivec4 t[9];
 //read uv offset
 t[0] = ivec4(texelFetch(Sampler0, uv, 0) * 255);
 ivec2 uvoffset = ivec2(t[0].r*256 + t[0].g, t[0].b*256 + t[0].a);
@@ -27,7 +27,7 @@ if (marker == ivec4(12,34,56,78) || marker == ivec4(12,34,56,79)) {
     // header
     //| 2^32   | 2^16x2   | 2^32      | 2^24 + 2^8   | 2^24    + \1 2^1  + 2^2   + 2^2 \2| 2^16x2       | 2^1     + 2^2       + 2^3      \1 2^9        \16|
     //| marker | tex size | nvertices | nobjs, ntexs | duration, autoplay, easing, interp| data heights | noshadow, autorotate, visibility, colorbehavior |
-    for (int i = 1; i < 8; i++) {
+    for (int i = 1; i < 9; i++) {
         t[i] = getmeta(topleft, i);
     }
     //1: texsize
@@ -49,6 +49,9 @@ if (marker == ivec4(12,34,56,78) || marker == ivec4(12,34,56,79)) {
     vec2 autorotate = vec2(getb(t[6].r, 6, 1), getb(t[6].r, 5, 1));
     bvec3 visibility = bvec3(getb(t[6].r, 4), getb(t[6].r, 3), getb(t[6].r, 2));
     int colorbehavior = getb(t[6].r, 0, 1)*256 + t[6].g;
+    //7: normals data
+    int vnh = t[7].r*256 + t[7].g;
+    bool normals = t[7].b > 0;
 
     //time in ticks
     float time = GameTime * 24000;
@@ -131,13 +134,13 @@ if (marker == ivec4(12,34,56,78) || marker == ivec4(12,34,56,79)) {
         headerheight = 1 + int(ceil(nvertices*0.25/size.x));
         int height = headerheight + (size.y * ntextures);
         //read data
-        ivec2 index = getvert(topleft, size.x, height+vph+vth, id, compression);
+        ivec3 index = getvert(topleft, size.x, height+vph+vth+vnh, id, compression);
         posoffset = getpos(topleft, size.x, height, index.x);
-        if (nframes > 1) {
+        if (nframes > 1) { // TODO: Animate normals
             int nids = (nframes * nvertices);
             //next frame
             id = (id+nvertices) % nids;
-            index = getvert(topleft, size.x, height+vph+vth, id, compression);
+            index = getvert(topleft, size.x, height+vph+vth+vnh, id, compression);
             vec3 posoffset2 = getpos(topleft, size.x, height, index.x);
             //interpolate
             transition = fract(time * nframes / duration);
@@ -152,11 +155,11 @@ if (marker == ivec4(12,34,56,78) || marker == ivec4(12,34,56,79)) {
                 case 3: //4-point bezier
                     //third point
                     id = (id+nvertices) % nids;
-                    index = getvert(topleft, size.x, height+vph+vth, id, compression);
+                    index = getvert(topleft, size.x, height+vph+vth+vnh, id, compression);
                     vec3 posoffset3 = getpos(topleft, size.x, height, index.x);
                     //fourth point
                     id = (id+nvertices) % nids;
-                    index = getvert(topleft, size.x, height+vph+vth, id, compression);
+                    index = getvert(topleft, size.x, height+vph+vth+vnh, id, compression);
                     vec3 posoffset4 = getpos(topleft, size.x, height, index.x);
                     //bezier
                     posoffset = bezier(posoffset, posoffset2, posoffset3, posoffset4, transition);
@@ -165,6 +168,8 @@ if (marker == ivec4(12,34,56,78) || marker == ivec4(12,34,56,79)) {
         }
         transition = 0;
         texCoord = getuv(topleft, size.x, height+vph, index.y);
+        // TODO: Apply model rotation
+        objmcNormal = normals ? getnormal(topleft, size.x, height+vph+vth, index.z) : vec3(0.0);
         texCoord2 = texCoord;
         if (ntextures > 1) {
             frame = int(time * ntextures / duration) % ntextures;

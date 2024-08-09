@@ -10,8 +10,13 @@ if (isCustom == 0) {
 }
 //custom lighting
 else if (noshadow == 0) {
-    //normal from position derivatives
-    vec3 normal = normalize(cross(dFdx(Pos), dFdy(Pos)));
+    vec3 normal;
+    if (dot(objmcNormal, objmcNormal) < 0.01) {
+        //normal from position derivatives
+        normal = normalize(cross(dFdx(Pos), dFdy(Pos)));
+    } else {
+        normal = normalize(objmcNormal);
+    }
 
     //block lighting
 #ifdef BLOCK
