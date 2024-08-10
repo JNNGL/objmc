@@ -1091,6 +1091,7 @@ if not len(sys.argv) > 1:
         noshadow = ns.get()
         autorotate = rarr.index(ar.get())
         autoplay = ap.get()
+        interpolation = iarr.index(it.get())
         colorbehavior = [cb[0].get(), cb[1].get(), cb[2].get()]
         output = [outjson.get(), outpng.get()]
         objmc(
